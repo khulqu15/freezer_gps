@@ -188,7 +188,7 @@ function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors'
   }).addTo(map);
-  const latlngs = waypoints.map(point => [point.lat, point.lng]);
+  const latlngs: any = waypoints.map(point => [point.lat, point.lng]);
   waypoints.forEach(point => {
     L.marker([point.lat, point.lng]).addTo(map);
   });
