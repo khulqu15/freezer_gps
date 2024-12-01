@@ -7,11 +7,10 @@
           </div>
           <div class="flex items-center gap-3">
             <button class="btn btn-base-300" @click="$router.push({name: 'Home'})">Monitoring</button>
-            <button class="btn btn-base-300" @click="$router.push({name: 'Controlling'})">Controlling</button>
           </div>
         </div>
         <div class="grid grid-cols-4 min-h-[88vh] items-center justify-items-center">
-          <div class="col-span-4 md:col-span-2 p-4 text-left w-full space-y-2">
+          <div class="col-span-4 md:col-span-4 p-4 text-left w-full space-y-2">
             <card-view-vue header="Data Table">
               <div class="flex items-center gap-3 mb-6">
                 <button class="btn btn-primary" @click="exportToExcel()">Export Excel</button>
@@ -22,10 +21,8 @@
                   <thead>
                     <tr>
                       <th></th>
-                      <th>Ultrasonic 1</th>
-                      <th>Ultrasonic 2</th>
-                      <th>Ultrasonic 3</th>
-                      <th>Ultrasonic 4</th>
+                      <th>GPS</th>
+                      <th>Location</th>
                       <th>Timestamp</th>
                       <th>Action</th>
                     </tr>
@@ -33,11 +30,9 @@
                   <tbody>
                     <tr v-for="(item, index) in tableData" :key="index">
                       <th>{{ index + 1 }}</th>
-                      <td>{{ item.ultrasonic1 }} cm</td>
-                      <td>{{ item.ultrasonic2 }} cm</td>
-                      <td>{{ item.ultrasonic3 }} cm</td>
-                      <td>{{ item.ultrasonic4 }} cm</td>
-                      <td>{{ item.timestamp }}</td>
+                      <td>{{ item.data.temperature }} C</td>
+                      <td>{{ item.data.location }}</td>
+                      <td>{{ item.data.timestamp }}</td>
                       <td>
                         <button @click="deleteByKey(item.key)" class="btn btn-error btn-sm">Delete</button>
                       </td>
@@ -66,6 +61,12 @@
               </card-view-vue>
             </div>
           </div>
+          
+          <div class="col-span-4 md:col-span-2 p-4 w-full">
+            <div class="w-full h-[50vh] relative overflow-hidden">
+                <div id="map" class="h-[50vh] w-full"></div>
+            </div>
+          </div>
 
         </div>
       </div>
@@ -81,67 +82,95 @@ import { database, ref as firebaseRef, get } from '@/firebaseConfig';
 import { remove, child } from 'firebase/database';
 import WavesChartVue from '@/components/WavesChart.vue';
 import * as XLSX from 'xlsx'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css';
 
 const selectedWave: Ref<any> = ref(-1);
 const tableData: Ref<any> = ref([])
 
 onMounted(() => {
   fetchDataFromFirebase();
-  document.documentElement.setAttribute('data-theme', 'pastel')
+  document.documentElement.setAttribute('data-theme', 'garden')
+  let testData = encryptText('{"location": "-7.276622, 112.793845", "temperature": 22.23, "timestamp": "20/03/2024 12:32"}')
+  console.log(testData + testData + testData)
 });
+
+function decryptText(encryptedText: string) {
+  let decryptedText = ""
+  let decrypted = '';
+  const key = "rio"
+  const keyLength = key.length
+  try {
+    for (let i = 0; i < encryptedText.length; i++) {
+      const encryptedCharCode = encryptedText.charCodeAt(i)
+      const keyCharCode = key.charCodeAt(i % keyLength)
+      const decryptedCharCode = encryptedCharCode - keyCharCode
+      decrypted += String.fromCharCode(decryptedCharCode)
+    }
+    decryptedText = decrypted;
+  } catch (error) {
+    console.error('Error decrypting text:', error);
+  }
+  return decryptedText
+}
+
+function encryptText(plainText: string) {
+  let encryptedText = '';
+  const key = "rio";
+  const keyLength = key.length;
+
+  try {
+    for (let i = 0; i < plainText.length; i++) {
+      const plainCharCode = plainText.charCodeAt(i);
+      const keyCharCode = key.charCodeAt(i % keyLength);
+      const encryptedCharCode = plainCharCode + keyCharCode;
+      encryptedText += String.fromCharCode(encryptedCharCode);
+    }
+  } catch (error) {
+    console.error('Error encrypting text:', error);
+  }
+  return encryptedText;
+}
+
 
 async function fetchDataFromFirebase() {
   try {
-    const snapshot = await get(firebaseRef(database, 'ultrasonic_leg/data'));
+    const snapshot = await get(firebaseRef(database, 'freezer_data/'));
     if (snapshot.exists()) {
       const data = snapshot.val();
+      console.log(data)
       tableData.value = Object.entries(data).map(([key, value]: any) => ({
         key,
-        ultrasonic1: value.ultrasonics[0],
-        ultrasonic2: value.ultrasonics[1],
-        ultrasonic3: value.ultrasonics[2],
-        ultrasonic4: value.ultrasonics[3],
-        timestamp: value.timestamp,
+        data: JSON.parse(decryptText(value)), // location: "-7.273921, 112.802100", temperature: 24.23, timestamp: "20/03/2024 12:32"
       }));
-      console.log(tableData.value)
-      const ultrasonic1 = [];
-      const ultrasonic2 = [];
-      const ultrasonic3 = [];
-      const ultrasonic4 = [];
 
-      for (const key in data) {
-        const entry = data[key];
-        const [datePart, timePart] = entry.timestamp.split(" ");
+      console.log(tableData.value)
+      const temperatures: any = [];
+      const waypoints: any = [];
+
+      tableData.value.forEach((el: any, index: number)=> {
+        const [datePart, timePart] = el.data.timestamp.split(" ");
         const [day, month, year] = datePart.split("/");
         const formattedDate = `${year}-${month}-${day}T${timePart}:00`;
-        console.log(entry)
         const date = new Date(formattedDate);
         if (!isNaN(date.getTime())) {
-          ultrasonic1.push({
-              value: entry.ultrasonics[0],
-              date: formattedDate
-          });
-          ultrasonic2.push({
-              value: entry.ultrasonics[1],
-              date: formattedDate
-          });
-          ultrasonic3.push({
-              value: entry.ultrasonics[2],
-              date: formattedDate
-          });
-          ultrasonic4.push({
-              value: entry.ultrasonics[3],
-              date: formattedDate
-          });
-        } else {
-            console.error("Invalid date:", entry.timestamp);
+          temperatures.push({
+            value: el.data.temperature,
+            date: formattedDate
+          })
         }
-      }
+        console.log(temperatures)
 
-      waves.value[0].data = ultrasonic1;
-      waves.value[1].data = ultrasonic2;
-      waves.value[2].data = ultrasonic3;
-      waves.value[3].data = ultrasonic4;
+        const [lat, lng] = el.data.location.split(',').map(Number);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          waypoints.push({ lat, lng });
+        }
+      });
+
+      waves.value[0].data = temperatures;
+      if (waypoints.length > 0) {
+        plotWaypointsOnMap(waypoints);
+      }
     } else {
       console.log("No data available");
     }
@@ -151,16 +180,26 @@ async function fetchDataFromFirebase() {
 }
 
 const waves = ref([
-  { name: 'Ultrasonic 1', data: [] as { value: number; date: string }[] },
-  { name: 'Ultrasonic 2', data: [] as { value: number; date: string }[] },
-  { name: 'Ultrasonic 3', data: [] as { value: number; date: string }[] },
-  { name: 'Ultrasonic 4', data: [] as { value: number; date: string }[] },
+  { name: 'Temperatures', data: [] as { value: number; date: string }[] },
 ]);
+
+function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
+  const map = L.map('map').setView([waypoints[0].lat, waypoints[0].lng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  const latlngs = waypoints.map(point => [point.lat, point.lng]);
+  waypoints.forEach(point => {
+    L.marker([point.lat, point.lng]).addTo(map);
+  });
+
+  L.polyline(latlngs, { color: 'blue' }).addTo(map);
+}
 
 
 async function deleteByKey(key: string) {
   try {
-    await remove(firebaseRef(database, `love_bird/data/${key}`));
+    await remove(firebaseRef(database, `freezer_data/${key}`));
     tableData.value = tableData.value.filter((item: any) => item.key !== key);
     console.log(`Entry with key ${key} deleted successfully`);
   } catch (error) {
@@ -170,7 +209,7 @@ async function deleteByKey(key: string) {
 
 async function deleteAll() {
   try {
-    await remove(firebaseRef(database, 'love_bird/data'));
+    await remove(firebaseRef(database, 'freezer_data'));
     tableData.value = [];
     console.log("All entries deleted successfully");
   } catch (error) {
