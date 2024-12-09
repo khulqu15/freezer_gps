@@ -21,7 +21,7 @@
                   <thead>
                     <tr>
                       <th></th>
-                      <th>GPS</th>
+                      <th>Temperature (C)</th>
                       <th>Location</th>
                       <th>Timestamp</th>
                       <th>Action</th>
@@ -30,7 +30,7 @@
                   <tbody>
                     <tr v-for="(item, index) in tableData" :key="index">
                       <th>{{ index + 1 }}</th>
-                      <td>{{ item.data.temperature }} C</td>
+                      <td>{{ parseInt(item.data.temperature) }} C</td>
                       <td>{{ item.data.location }}</td>
                       <td>{{ item.data.timestamp }}</td>
                       <td>
@@ -91,8 +91,8 @@ const tableData: Ref<any> = ref([])
 onMounted(() => {
   fetchDataFromFirebase();
   document.documentElement.setAttribute('data-theme', 'garden')
-  let testData = encryptText('{"location": "-7.276622, 112.793845", "temperature": 22.23, "timestamp": "20/03/2024 12:32"}')
-  console.log(testData + testData + testData)
+  let testData = encryptText('{ "location": "-7.269376, 112.782494", "temperature": 5.5, "timestamp": "10/12/2024 20:25" }')
+  console.log(testData)
 });
 
 function decryptText(encryptedText: string) {
