@@ -145,6 +145,22 @@ async function fetchDataFromFirebase() {
       }));
 
       console.log(tableData.value)
+
+      // sort data by timestamp
+      tableData.value.sort((a: any, b: any) => {
+        const [dateA, timeA] = a.data.timestamp.split(" ");
+        const [dayA, monthA, yearA] = dateA.split("/");
+        const [hourA, minuteA] = timeA.split(":");
+        const dateObjA = new Date(`${yearA}-${monthA}-${dayA}T${hourA}:${minuteA}:00`);
+
+        const [dateB, timeB] = b.data.timestamp.split(" ");
+        const [dayB, monthB, yearB] = dateB.split("/");
+        const [hourB, minuteB] = timeB.split(":");
+        const dateObjB = new Date(`${yearB}-${monthB}-${dayB}T${hourB}:${minuteB}:00`);
+
+        return dateObjA.getTime() - dateObjB.getTime();
+      });
+
       const temperatures: any = [];
       const waypoints: any = [];
 
