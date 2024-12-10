@@ -79,7 +79,7 @@ import CardViewVue from '@/components/CardView.vue';
 import { IonContent, IonPage } from '@ionic/vue';
 import { ref, Ref, onMounted } from 'vue';
 import { database, ref as firebaseRef, get } from '@/firebaseConfig';
-import { remove, child } from 'firebase/database';
+import { remove, child, onValue } from 'firebase/database';
 import WavesChartVue from '@/components/WavesChart.vue';
 import * as XLSX from 'xlsx'
 import L from 'leaflet'
@@ -91,7 +91,7 @@ const tableData: Ref<any> = ref([])
 onMounted(() => {
   fetchDataFromFirebase();
   document.documentElement.setAttribute('data-theme', 'garden')
-  let testData = encryptText('{ "location": "-7.269376, 112.782494", "temperature": 5.5, "timestamp": "10/12/2024 20:25" }')
+  let testData = encryptText('{ "location": "-7.276967, 112.793148", "temperature": 5.5, "timestamp": "10/12/2024 20:25" }')
   console.log(testData)
 });
 
@@ -132,64 +132,66 @@ function encryptText(plainText: string) {
   return encryptedText;
 }
 
-
 async function fetchDataFromFirebase() {
   try {
-    const snapshot = await get(firebaseRef(database, 'freezer_data/'));
-    if (snapshot.exists()) {
-      const data = snapshot.val();
-      console.log(data)
-      tableData.value = Object.entries(data).map(([key, value]: any) => ({
-        key,
-        data: JSON.parse(decryptText(value)), // location: "-7.273921, 112.802100", temperature: 24.23, timestamp: "20/03/2024 12:32"
-      }));
+    onValue(firebaseRef(database, 'freezer_data/'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        console.log(data)
+        tableData.value = Object.entries(data).map(([key, value]: any) => ({
+          key,
+          data: JSON.parse(decryptText(value)), // location: "-7.273921, 112.802100", temperature: 24.23, timestamp: "20/03/2024 12:32"
+        }));
 
-      console.log(tableData.value)
+        console.log(tableData.value)
 
-      // sort data by timestamp
-      tableData.value.sort((a: any, b: any) => {
-        const [dateA, timeA] = a.data.timestamp.split(" ");
-        const [dayA, monthA, yearA] = dateA.split("/");
-        const [hourA, minuteA] = timeA.split(":");
-        const dateObjA = new Date(`${yearA}-${monthA}-${dayA}T${hourA}:${minuteA}:00`);
+        // sort data by timestamp
+        tableData.value.sort((a: any, b: any) => {
+          const [dateA, timeA] = a.data.timestamp.split(" ");
+          const [dayA, monthA, yearA] = dateA.split("/");
+          const [hourA, minuteA] = timeA.split(":");
+          const dateObjA = new Date(`${yearA}-${monthA}-${dayA}T${hourA}:${minuteA}:00`);
 
-        const [dateB, timeB] = b.data.timestamp.split(" ");
-        const [dayB, monthB, yearB] = dateB.split("/");
-        const [hourB, minuteB] = timeB.split(":");
-        const dateObjB = new Date(`${yearB}-${monthB}-${dayB}T${hourB}:${minuteB}:00`);
+          const [dateB, timeB] = b.data.timestamp.split(" ");
+          const [dayB, monthB, yearB] = dateB.split("/");
+          const [hourB, minuteB] = timeB.split(":");
+          const dateObjB = new Date(`${yearB}-${monthB}-${dayB}T${hourB}:${minuteB}:00`);
 
-        return dateObjA.getTime() - dateObjB.getTime();
-      });
+          return dateObjA.getTime() - dateObjB.getTime();
+        });
 
-      const temperatures: any = [];
-      const waypoints: any = [];
+        const temperatures: any = [];
+        const waypoints: any = [];
 
-      tableData.value.forEach((el: any, index: number)=> {
-        const [datePart, timePart] = el.data.timestamp.split(" ");
-        const [day, month, year] = datePart.split("/");
-        const formattedDate = `${year}-${month}-${day}T${timePart}:00`;
-        const date = new Date(formattedDate);
-        if (!isNaN(date.getTime())) {
-          temperatures.push({
-            value: el.data.temperature,
-            date: formattedDate
-          })
+        tableData.value.forEach((el: any, index: number) => {
+          const [datePart, timePart] = el.data.timestamp.split(" ");
+          const [day, month, year] = datePart.split("/");
+          const formattedDate = `${year}-${month}-${day}T${timePart}:00`;
+          const date = new Date(formattedDate);
+          if (!isNaN(date.getTime())) {
+            temperatures.push({
+              value: el.data.temperature,
+              date: formattedDate
+            });
+          }
+          console.log(temperatures);
+
+          const [lat, lng] = el.data.location.split(',').map(Number);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            waypoints.push({ lat, lng });
+          }
+        });
+
+        waves.value[0].data = temperatures;
+        if (waypoints.length > 0) {
+          plotWaypointsOnMap(waypoints);
         }
-        console.log(temperatures)
-
-        const [lat, lng] = el.data.location.split(',').map(Number);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          waypoints.push({ lat, lng });
-        }
-      });
-
-      waves.value[0].data = temperatures;
-      if (waypoints.length > 0) {
-        plotWaypointsOnMap(waypoints);
+      } else {
+        console.log("No data available");
       }
-    } else {
-      console.log("No data available");
-    }
+    }, (error) => {
+      console.error("Error fetching data from Firebase:", error);
+    });
   } catch (error) {
     console.error("Error fetching data from Firebase:", error);
   }
