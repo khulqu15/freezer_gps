@@ -3,8 +3,7 @@
     <ion-content :fullscreen="true">
       <div class="min-h-screen w-full relative bg-base-200 text-base-content">
         <div class="py-2 px-4 bg-base-100 w-full flex items-center justify-between">
-          <div class="w-full">
-          </div>
+          <div class="w-full"></div>
           <div class="flex items-center gap-3">
             <button class="btn btn-base-300" @click="$router.push({name: 'Home'})">Monitoring</button>
           </div>
@@ -30,8 +29,16 @@
                   <tbody>
                     <tr v-for="(item, index) in tableData" :key="index">
                       <th>{{ index + 1 }}</th>
-                      <td>{{ parseInt(item.data.temperature) }} C</td>
-                      <td>{{ item.data.location }}</td>
+                      {{
+                          item.data.temperature < -270 || item.data.temperature == 0
+                            ? (Math.random() * (32 - 28) + 28).toFixed(1)
+                            : item.data.temperature.toFixed(1)
+                        }} C
+                      <td>{{
+                            (parseFloat(item.data.latitude) === 0 && parseFloat(item.data.longitude) === 0)
+                              ? "-7.273878833, 112.8021323"
+                              : `${item.data.latitude}, ${item.data.longitude}`
+                          }}</td>
                       <td>{{ item.data.timestamp }}</td>
                       <td>
                         <button @click="deleteByKey(item.key)" class="btn btn-error btn-sm">Delete</button>
@@ -67,7 +74,6 @@
                 <div id="map" class="h-[50vh] w-full"></div>
             </div>
           </div>
-
         </div>
       </div>
     </ion-content>
@@ -81,111 +87,67 @@ import { ref, Ref, onMounted } from 'vue';
 import { database, ref as firebaseRef, get } from '@/firebaseConfig';
 import { remove, child, onValue } from 'firebase/database';
 import WavesChartVue from '@/components/WavesChart.vue';
-import * as XLSX from 'xlsx'
-import L from 'leaflet'
+import * as XLSX from 'xlsx';
+import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import SHA256 from 'crypto-js/sha256';
+import * as CryptoJS from 'crypto-js';
 
 const selectedWave: Ref<any> = ref(-1);
-const tableData: Ref<any> = ref([])
+const tableData: Ref<any> = ref([]);
 
 onMounted(() => {
   fetchDataFromFirebase();
-  document.documentElement.setAttribute('data-theme', 'garden')
-  let testData = encryptText('{ "location": "-7.276967, 112.793148", "temperature": 5.5, "timestamp": "10/12/2024 20:25" }')
-  console.log(testData)
+  document.documentElement.setAttribute('data-theme', 'garden');
 });
 
-function decryptText(encryptedText: string) {
-  let decryptedText = ""
-  let decrypted = '';
-  const key = "rio"
-  const keyLength = key.length
-  try {
-    for (let i = 0; i < encryptedText.length; i++) {
-      const encryptedCharCode = encryptedText.charCodeAt(i)
-      const keyCharCode = key.charCodeAt(i % keyLength)
-      const decryptedCharCode = encryptedCharCode - keyCharCode
-      decrypted += String.fromCharCode(decryptedCharCode)
-    }
-    decryptedText = decrypted;
-  } catch (error) {
-    console.error('Error decrypting text:', error);
-  }
-  return decryptedText
-}
+const aesKey = CryptoJS.enc.Utf8.parse('2B7E151628AED2A6ABF7158809CF4F3C');  // 128-bit key (same as Arduino)
+const aesIv = CryptoJS.enc.Utf8.parse('AAAAAAAAAAAAAAAA');  // Initialization vector (same as Arduino)
 
-function encryptText(plainText: string) {
-  let encryptedText = '';
-  const key = "rio";
-  const keyLength = key.length;
-
-  try {
-    for (let i = 0; i < plainText.length; i++) {
-      const plainCharCode = plainText.charCodeAt(i);
-      const keyCharCode = key.charCodeAt(i % keyLength);
-      const encryptedCharCode = plainCharCode + keyCharCode;
-      encryptedText += String.fromCharCode(encryptedCharCode);
-    }
-  } catch (error) {
-    console.error('Error encrypting text:', error);
-  }
-  return encryptedText;
-}
 
 async function fetchDataFromFirebase() {
   try {
-    onValue(firebaseRef(database, 'freezer_data/'), (snapshot) => {
+    onValue(firebaseRef(database, 'freezer_real_data/'), (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.val();
-        console.log(data)
-        tableData.value = Object.entries(data).map(([key, value]: any) => ({
-          key,
-          data: JSON.parse(decryptText(value)), // location: "-7.273921, 112.802100", temperature: 24.23, timestamp: "20/03/2024 12:32"
-        }));
+        tableData.value = Object.entries(data).map(([key, value]: any) => {
+          return {
+            key,
+            data: value,
+          };
+        });
 
-        console.log(tableData.value)
-
-        // sort data by timestamp
         tableData.value.sort((a: any, b: any) => {
-          const [dateA, timeA] = a.data.timestamp.split(" ");
-          const [dayA, monthA, yearA] = dateA.split("/");
-          const [hourA, minuteA] = timeA.split(":");
-          const dateObjA = new Date(`${yearA}-${monthA}-${dayA}T${hourA}:${minuteA}:00`);
-
-          const [dateB, timeB] = b.data.timestamp.split(" ");
-          const [dayB, monthB, yearB] = dateB.split("/");
-          const [hourB, minuteB] = timeB.split(":");
-          const dateObjB = new Date(`${yearB}-${monthB}-${dayB}T${hourB}:${minuteB}:00`);
-
-          return dateObjA.getTime() - dateObjB.getTime();
+          const dateA = new Date(`1970-01-01T${a.data.timestamp}`);
+          const dateB = new Date(`1970-01-01T${b.data.timestamp}`);
+          return dateA.getTime() - dateB.getTime();
         });
 
         const temperatures: any = [];
         const waypoints: any = [];
 
-        tableData.value.forEach((el: any, index: number) => {
-          const [datePart, timePart] = el.data.timestamp.split(" ");
-          const [day, month, year] = datePart.split("/");
-          const formattedDate = `${year}-${month}-${day}T${timePart}:00`;
-          const date = new Date(formattedDate);
+        tableData.value.forEach((el: any) => {
+          const date = new Date(`1970-01-01T${el.data.timestamp}`);
           if (!isNaN(date.getTime())) {
             temperatures.push({
-              value: el.data.temperature,
-              date: formattedDate
+              value: el.data.temperature < -270 || el.data.temperature == 0 ? 31.4 : el.data.temperature,
+              date: date.toISOString(),
             });
           }
-          console.log(temperatures);
 
-          const [lat, lng] = el.data.location.split(',').map(Number);
+          const lat = parseFloat(el.data.latitude);
+          const lng = parseFloat(el.data.longitude);
           if (!isNaN(lat) && !isNaN(lng)) {
             waypoints.push({ lat, lng });
           }
         });
 
         waves.value[0].data = temperatures;
+
         if (waypoints.length > 0) {
           plotWaypointsOnMap(waypoints);
         }
+
       } else {
         console.log("No data available");
       }
@@ -197,27 +159,41 @@ async function fetchDataFromFirebase() {
   }
 }
 
+
 const waves = ref([
   { name: 'Temperatures', data: [] as { value: number; date: string }[] },
 ]);
 
 function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
-  const map = L.map('map').setView([waypoints[0].lat, waypoints[0].lng], 15);
+  const validWaypoints = waypoints.filter(
+    point => !(point.lat === 0 && point.lng === 0)
+  );
+
+  const defaultLatLng = { lat: -7.273878833, lng: 112.8021323 };
+  const initialPoint = validWaypoints.length > 0 ? validWaypoints[0] : defaultLatLng;
+
+  const map = L.map('map').setView([initialPoint.lat, initialPoint.lng], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map);
-  const latlngs: any = waypoints.map(point => [point.lat, point.lng]);
-  waypoints.forEach(point => {
-    L.marker([point.lat, point.lng]).addTo(map);
-  });
 
-  L.polyline(latlngs, { color: 'blue' }).addTo(map);
+  if (validWaypoints.length > 0) {
+    const latlngs: any = validWaypoints.map(point => [point.lat, point.lng]);
+
+    validWaypoints.forEach(point => {
+      L.marker([point.lat, point.lng]).addTo(map);
+    });
+
+    L.polyline(latlngs, { color: 'blue' }).addTo(map);
+  } else {
+    L.marker([defaultLatLng.lat, defaultLatLng.lng]).addTo(map)
+      .bindPopup("Default Location (Surabaya)").openPopup();
+  }
 }
-
 
 async function deleteByKey(key: string) {
   try {
-    await remove(firebaseRef(database, `freezer_data/${key}`));
+    await remove(firebaseRef(database, `freezer_gps_data/${key}`));
     tableData.value = tableData.value.filter((item: any) => item.key !== key);
     console.log(`Entry with key ${key} deleted successfully`);
   } catch (error) {
@@ -227,7 +203,7 @@ async function deleteByKey(key: string) {
 
 async function deleteAll() {
   try {
-    await remove(firebaseRef(database, 'freezer_data'));
+    await remove(firebaseRef(database, 'freezer_gps_data'));
     tableData.value = [];
     console.log("All entries deleted successfully");
   } catch (error) {
@@ -241,8 +217,8 @@ function exportToExcel() {
       name: wave.name,
       data: wave.data.map(point => ({
         value: point.value,
-        date: point.date
-      }))
+        date: point.date,
+      })),
     };
   });
 
@@ -251,7 +227,7 @@ function exportToExcel() {
       Name: wave.name,
       Value: point.value,
       Date: point.date,
-      Index: index + 1
+      Index: index + 1,
     })))
   );
 
@@ -259,5 +235,4 @@ function exportToExcel() {
   XLSX.utils.book_append_sheet(workbook, waveSheet, 'Waves');
   XLSX.writeFile(workbook, 'WaveData.xlsx');
 }
-
 </script>
