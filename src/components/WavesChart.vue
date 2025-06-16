@@ -1,5 +1,5 @@
 <template>
-    <div>
+    <div class="h-full w-full">
         <Line :data="chartData" :options="chartOptions" />
     </div>
 </template>
@@ -50,66 +50,85 @@ export default defineComponent({
         };
 
         const chartData = computed<ChartData<'line'>>(() => {
-            return {
-                labels: props.waveData[0]?.map(data => formatDate(data.date)) || [],
-                datasets: props.waveData.map((data, index) => ({
+            const maxPoints = 50;
+
+            const labels = props.waveData[0]
+                ?.slice(-maxPoints)
+                .map(data => formatDate(data.date)) || [];
+
+            const datasets = props.waveData.map((data, index) => {
+                const recentData = data.slice(-maxPoints);
+                return {
                     label: props.waveNames[index],
-                    data: data.map(d => d.value),
+                    data: recentData.map(d => d.value),
                     borderColor: colors[index % colors.length],
                     backgroundColor: colors[index % colors.length].replace('1)', '0.2)'),
                     fill: true,
-                })),
+                };
+            });
+
+            return {
+                labels,
+                datasets,
             };
         });
 
-        const chartOptions = computed<ChartOptions<'line'>>(() => ({
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'top',
-                },
-                title: {
-                    display: true,
-                    text: 'Diagram',
-                },
-                tooltip: {
-                    enabled: true,
-                },
-                zoom: {
-                    pan: {
-                        enabled: true,
-                        mode: 'xy',
+        const getYLimits = () => {
+            let allValues: number[] = [];
+            props.waveData.forEach(series => {
+                series.forEach(point => {
+                    allValues.push(point.value);
+                });
+            });
+
+            if (allValues.length === 0) return { min: 0, max: 10 };
+
+            const minVal = Math.min(...allValues);
+            const maxVal = Math.max(...allValues);
+
+            return {
+                min: minVal >= 0 ? 0 : Math.floor(minVal - 1),
+                max: Math.ceil(maxVal + 1)
+            };
+        };
+
+        const chartOptions = computed<ChartOptions<'line'>>(() => {
+            const { min, max } = getYLimits();
+
+            return {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    title: {
+                        display: true,
+                        text: 'Diagram',
                     },
+                    tooltip: { enabled: true },
                     zoom: {
-                        wheel: {
-                            enabled: true,
+                        pan: { enabled: true, mode: 'x' },
+                        zoom: {
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: 'x',
                         },
-                        pinch: {
-                            enabled: true,
-                        },
-                        mode: 'xy',
                     },
                 },
-            },
-            scales: {
-                x: {
-                    type: 'category',
-                    title: {
-                        display: true,
-                        text: 'Time',
+                scales: {
+                    x: {
+                        type: 'category',
+                        title: { display: true, text: 'Time' },
+                        ticks: { autoSkip: true, maxTicksLimit: 10 },
+                    },
+                    y: {
+                        type: 'linear',
+                        title: { display: true, text: 'Value' },
+                        min,
+                        max,
                     },
                 },
-                y: {
-                    type: 'linear',
-                    title: {
-                        display: true,
-                        text: 'Value',
-                    },
-                    min: -20,
-                    max: 20,
-                },
-            },
-        }));
+            };
+        });
 
         return {
             chartData,

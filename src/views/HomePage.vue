@@ -11,9 +11,14 @@
         <div class="grid grid-cols-4 min-h-[88vh] items-center justify-items-center">
           <div class="col-span-4 md:col-span-4 p-4 text-left w-full space-y-2">
             <card-view-vue header="Data Table">
-              <div class="flex items-center gap-3 mb-6">
-                <button class="btn btn-primary" @click="exportToExcel()">Export Excel</button>
-                <button class="btn btn-error" @click="deleteAll()">Delete All</button>
+              <div class="flex justify-between w-full items-center gap-3 flex-wrap">
+                <div class="flex items-center gap-3 mb-6">
+                  <button class="btn btn-primary" @click="exportToExcel()">Export Excel</button>
+                  <button class="btn btn-error" @click="deleteAll()">Delete All</button>
+                </div>
+                <div>
+                  <button class="btn btn-primary" @click="isDescending = !isDescending, fetchDataFromFirebase()">Sort: {{ isDescending ? 'Oldest' : 'Newest' }}</button>
+                </div>
               </div>
               <div class="w-full max-h-[60vh] h-[33vh] overflow-auto">
                 <table class="table table-sm">
@@ -28,15 +33,15 @@
                   </thead>
                   <tbody>
                     <tr v-for="(item, index) in tableData" :key="index">
-                      <th>{{ index + 1 }}</th>
+                      <th>{{ isDescending ? tableData.length - index : index + 1 }}</th>
                       {{
                           item.data.temperature < -270 || item.data.temperature == 0
                             ? (Math.random() * (32 - 28) + 28).toFixed(1)
                             : item.data.temperature.toFixed(1)
                         }} C
                       <td>{{
-                            (parseFloat(item.data.latitude) === 0 && parseFloat(item.data.longitude) === 0)
-                              ? "-7.273878833, 112.8021323"
+                            (parseFloat(item.data.latitude) === 0 || parseFloat(item.data.longitude) === 0)
+                              ? "-"
                               : `${item.data.latitude}, ${item.data.longitude}`
                           }}</td>
                       <td>{{ item.data.timestamp }}</td>
@@ -95,6 +100,7 @@ import * as CryptoJS from 'crypto-js';
 
 const selectedWave: Ref<any> = ref(-1);
 const tableData: Ref<any> = ref([]);
+const isDescending = ref(true);
 
 onMounted(() => {
   fetchDataFromFirebase();
@@ -103,7 +109,6 @@ onMounted(() => {
 
 const aesKey = CryptoJS.enc.Utf8.parse('2B7E151628AED2A6ABF7158809CF4F3C');  // 128-bit key (same as Arduino)
 const aesIv = CryptoJS.enc.Utf8.parse('AAAAAAAAAAAAAAAA');  // Initialization vector (same as Arduino)
-
 
 async function fetchDataFromFirebase() {
   try {
@@ -120,9 +125,10 @@ async function fetchDataFromFirebase() {
         tableData.value.sort((a: any, b: any) => {
           const dateA = new Date(`1970-01-01T${a.data.timestamp}`);
           const dateB = new Date(`1970-01-01T${b.data.timestamp}`);
-          return dateA.getTime() - dateB.getTime();
+          return isDescending.value
+            ? dateB.getTime() - dateA.getTime()
+            : dateA.getTime() - dateB.getTime();
         });
-
         const temperatures: any = [];
         const waypoints: any = [];
 
@@ -159,7 +165,6 @@ async function fetchDataFromFirebase() {
   }
 }
 
-
 const waves = ref([
   { name: 'Temperatures', data: [] as { value: number; date: string }[] },
 ]);
@@ -193,7 +198,7 @@ function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
 
 async function deleteByKey(key: string) {
   try {
-    await remove(firebaseRef(database, `freezer_gps_data/${key}`));
+    await remove(firebaseRef(database, `freezer_real_data/${key}`));
     tableData.value = tableData.value.filter((item: any) => item.key !== key);
     console.log(`Entry with key ${key} deleted successfully`);
   } catch (error) {
@@ -203,7 +208,7 @@ async function deleteByKey(key: string) {
 
 async function deleteAll() {
   try {
-    await remove(firebaseRef(database, 'freezer_gps_data'));
+    await remove(firebaseRef(database, 'freezer_real_data'));
     tableData.value = [];
     console.log("All entries deleted successfully");
   } catch (error) {
