@@ -168,6 +168,7 @@ async function fetchDataFromFirebase() {
 const waves = ref([
   { name: 'Temperatures', data: [] as { value: number; date: string }[] },
 ]);
+let leafletMap: any = null;
 
 function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
   const validWaypoints = waypoints.filter(
@@ -177,21 +178,26 @@ function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
   const defaultLatLng = { lat: -7.273878833, lng: 112.8021323 };
   const initialPoint = validWaypoints.length > 0 ? validWaypoints[0] : defaultLatLng;
 
-  const map = L.map('map').setView([initialPoint.lat, initialPoint.lng], 15);
+  if (leafletMap) {
+    leafletMap.remove();
+    leafletMap = null;
+  }
+
+  leafletMap = L.map('map').setView([initialPoint.lat, initialPoint.lng], 15);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
-  }).addTo(map);
+  }).addTo(leafletMap);
 
   if (validWaypoints.length > 0) {
     const latlngs: any = validWaypoints.map(point => [point.lat, point.lng]);
 
     validWaypoints.forEach(point => {
-      L.marker([point.lat, point.lng]).addTo(map);
+      L.marker([point.lat, point.lng]).addTo(leafletMap);
     });
 
-    L.polyline(latlngs, { color: 'blue' }).addTo(map);
+    L.polyline(latlngs, { color: 'blue' }).addTo(leafletMap);
   } else {
-    L.marker([defaultLatLng.lat, defaultLatLng.lng]).addTo(map)
+    L.marker([defaultLatLng.lat, defaultLatLng.lng]).addTo(leafletMap)
       .bindPopup("Default Location (Surabaya)").openPopup();
   }
 }
