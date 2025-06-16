@@ -1,11 +1,14 @@
 <template>
-    <div class="h-full w-full">
-        <Line :data="chartData" :options="chartOptions" />
+    <div class="">
+        <button class="btn btn-primary" @click="resetZoom">Reset Zoom</button>
+        <div class="h-full w-full min-h-[50vh]">
+            <Line ref="chartRef" :data="chartData" :options="chartOptions" />
+        </div>
     </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, PropType } from "vue";
+import { defineComponent, computed, PropType, nextTick, watch, ref } from "vue";
 import {
     Chart as Chartjs,
     CategoryScale,
@@ -42,13 +45,14 @@ export default defineComponent({
 
     setup(props) {
         const colors = ['rgba(75, 192, 192, 1)', 'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)', 'rgba(255, 206, 86, 1)', 'rgba(153, 102, 255, 1)'];
-
+        const chartRef = ref<any>(null);
+        let lastZoomState: any = null;
         const formatDate = (dateString: string) => {
             const date = new Date(dateString);
             const options: Intl.DateTimeFormatOptions = { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' };
             return date.toLocaleString('en-US', options);
         };
-
+        
         const chartData = computed<ChartData<'line'>>(() => {
             const maxPoints = 50;
 
@@ -92,6 +96,24 @@ export default defineComponent({
             };
         };
 
+        watch(chartData, async () => {
+            if (chartRef.value?.chart && lastZoomState?.x) {
+                await nextTick(); // tunggu chart re-render
+                const chart = chartRef.value.chart;
+
+                chart.options.scales!.x!.min = lastZoomState.x.min;
+                chart.options.scales!.x!.max = lastZoomState.x.max;
+
+                if (lastZoomState.y) {
+                    chart.options.scales!.y!.min = lastZoomState.y.min;
+                    chart.options.scales!.y!.max = lastZoomState.y.max;
+                }
+
+                chart.update('none');
+            }
+        });
+
+
         const chartOptions = computed<ChartOptions<'line'>>(() => {
             const { min, max } = getYLimits();
 
@@ -111,6 +133,16 @@ export default defineComponent({
                             wheel: { enabled: true },
                             pinch: { enabled: true },
                             mode: 'x',
+                            onZoom: ({ chart }) => {
+                                lastZoomState = {
+                                    x: chart.scales.x.min !== undefined && chart.scales.x.max !== undefined
+                                    ? { min: chart.scales.x.min, max: chart.scales.x.max }
+                                    : null,
+                                    y: chart.scales.y.min !== undefined && chart.scales.y.max !== undefined
+                                    ? { min: chart.scales.y.min, max: chart.scales.y.max }
+                                    : null,
+                                };
+                            }
                         },
                     },
                 },
@@ -130,9 +162,18 @@ export default defineComponent({
             };
         });
 
+        const resetZoom = () => {
+            if (chartRef.value?.chart) {
+                chartRef.value.chart.resetZoom();
+                lastZoomState = null;
+            }
+        };
+
         return {
             chartData,
+            resetZoom,
             chartOptions,
+            chartRef,
         };
     },
 });

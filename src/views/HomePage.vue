@@ -20,7 +20,7 @@
                   <button class="btn btn-primary" @click="isDescending = !isDescending, fetchDataFromFirebase()">Sort: {{ isDescending ? 'Oldest' : 'Newest' }}</button>
                 </div>
               </div>
-              <div class="w-full max-h-[60vh] h-[33vh] overflow-auto">
+              <div class="w-full max-h-[60vh] h-[33vh] overflow-auto min-h-50vh">
                 <table class="table table-sm">
                   <thead>
                     <tr>
@@ -56,8 +56,8 @@
           </div>
 
           <div class="col-span-4 md:col-span-2 p-4 text-left w-full space-y-2">
-            <div v-if="waves.length > 0">
-              <card-view-vue header="Chart Plotting">
+            <div v-if="waves.length > 0" class="min-h-[50vh]">
+              <card-view-vue header="Chart Plotting" class="min-h-[50vh]">
                 <div v-if="selectedWave == -1">
                   <waves-chart-vue 
                     :wave-data="waves.map(wave => wave.data)" 
@@ -114,6 +114,9 @@ onMounted(() => {
 
 const aesKey = CryptoJS.enc.Utf8.parse('2B7E151628AED2A6ABF7158809CF4F3C');  // 128-bit key (same as Arduino)
 const aesIv = CryptoJS.enc.Utf8.parse('AAAAAAAAAAAAAAAA');  // Initialization vector (same as Arduino)
+let leafletMap: any = null;
+let currentZoom = 15;
+let currentCenter: [number, number] = [-7.273878833, 112.8021323];
 
 async function fetchDataFromFirebase() {
   try {
@@ -173,7 +176,6 @@ async function fetchDataFromFirebase() {
 const waves = ref([
   { name: 'Temperatures', data: [] as { value: number; date: string }[] },
 ]);
-let leafletMap: any = null;
 
 function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
   const validWaypoints = waypoints.filter(
@@ -183,12 +185,14 @@ function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
   const defaultLatLng = { lat: -7.273878833, lng: 112.8021323 };
   const initialPoint = validWaypoints.length > 0 ? validWaypoints[0] : defaultLatLng;
 
+  // ✅ Simpan posisi & zoom sebelum reset
   if (leafletMap) {
+    currentZoom = leafletMap.getZoom();
+    currentCenter = [leafletMap.getCenter().lat, leafletMap.getCenter().lng];
     leafletMap.remove();
-    leafletMap = null;
   }
 
-  leafletMap = L.map('map').setView([initialPoint.lat, initialPoint.lng], 15);
+  leafletMap = L.map('map').setView(currentCenter, currentZoom);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '&copy; OpenStreetMap contributors',
   }).addTo(leafletMap);
@@ -206,6 +210,7 @@ function plotWaypointsOnMap(waypoints: { lat: number; lng: number }[]) {
       .bindPopup("Default Location (Surabaya)").openPopup();
   }
 }
+
 
 async function deleteByKey(key: string) {
   try {
